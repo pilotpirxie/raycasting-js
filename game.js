@@ -1,7 +1,19 @@
 function clearScreen() {
   ctx.clearRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
-  ctx.fillStyle = '#777';
-  ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+
+  const sky = ctx.createLinearGradient(0, 0, 0, SCREEN_HEIGHT);
+  sky.addColorStop(0, "#00a7ee");
+  sky.addColorStop(0.3, "#fff");
+
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT/2);
+
+  const grass = ctx.createLinearGradient(0, 0, 0, SCREEN_HEIGHT);
+  grass.addColorStop(0.5, "#214603");
+  grass.addColorStop(1, "#439307");
+
+  ctx.fillStyle = grass;
+  ctx.fillRect(0, SCREEN_HEIGHT/2, SCREEN_WIDTH, SCREEN_HEIGHT/2);
 }
 
 function drawWalls() {
@@ -18,9 +30,10 @@ function drawPlayer() {
   ctx.beginPath();
   ctx.arc(playerX * WALL_SIZE, playerY * WALL_SIZE, WALL_SIZE / 2, 0, 2 * Math.PI);
   ctx.stroke();
+  drawRay(0);
 }
 
-function drawRay(relativeAngle) {
+function findIntersection(relativeAngle) {
   let rayLength = 0;
   let distance = 0;
   let search = true;
@@ -37,8 +50,8 @@ function drawRay(relativeAngle) {
           let blockY = y * WALL_SIZE;
 
           if (rayPos.x >= blockX && rayPos.y >= blockY && rayPos.x <= blockX + WALL_SIZE && rayPos.y <= blockY + WALL_SIZE) {
+            distance = Math.sqrt(Math.pow((playerX * WALL_SIZE) - blockX, 2) + Math.pow((playerY * WALL_SIZE) - blockY, 2));
             search = false;
-            distance = Math.sqrt(Math.pow(rayPos.x - blockX, 2) + Math.pow(rayPos.y - blockY, 2));
           }
         }
       }
@@ -49,23 +62,38 @@ function drawRay(relativeAngle) {
     }
   }
 
+  return {
+    x: rayPos.x,
+    y: rayPos.y,
+    distance: distance
+  }
+}
+
+function drawRay(relativeAngle) {
+  const rayIntersection = findIntersection(relativeAngle);
+
   ctx.beginPath();
   ctx.moveTo(playerX * WALL_SIZE, playerY * WALL_SIZE);
-  ctx.lineTo(rayPos.x, rayPos.y);
+  ctx.lineTo(rayIntersection.x, rayIntersection.y);
   ctx.stroke();
+
+  return rayIntersection;
 }
 
 function drawPlayerFov() {
-  const cameraPos = calculateVectorCoordinates(WALL_SIZE * 4, playerAngle, playerX * WALL_SIZE, playerY * WALL_SIZE);
-
-  directionX = cameraPos.x;
-  directionY = cameraPos.y;
-
-  for (let i = 0; i < RESOLUTION / 2; i++) {
-    drawRay(-RAY_STEP_ANGLE * i);
+  rays = [];
+  for (let i = RESOLUTION; i > 0; i--) {
+    let ray = drawRay(-FOV_ANGLE/2 + (RAY_STEP_ANGLE * i));
+    rays.push(ray);
   }
-  for (let i = 1; i < RESOLUTION / 2; i++) {
-    drawRay(RAY_STEP_ANGLE * i);
+}
+
+function drawScreen() {
+  for (let i = 0; i < rays.length; i++) {
+    let distance = rays[i].distance;
+    let distanceInverse = SCREEN_HEIGHT - distance;
+    ctx.fillStyle = `rgba(${distanceInverse}, ${distanceInverse}, ${distanceInverse}, 1)`;
+    ctx.fillRect(STRIPE_WIDTH * i, distance/2, STRIPE_WIDTH, distanceInverse);
   }
 }
 
@@ -74,10 +102,17 @@ function showDebug() {
 }
 
 function draw() {
-  clearScreen();
-  drawWalls();
-  drawPlayer();
-  drawPlayerFov();
+  if (showMap) {
+    clearScreen();
+    drawScreen();
+    drawWalls();
+    drawPlayer();
+    drawPlayerFov();
+  } else {
+    drawPlayerFov();
+    clearScreen();
+    drawScreen();
+  }
   showDebug();
 }
 
@@ -102,6 +137,16 @@ function rotatePlayer(degree) {
   }
 }
 
+function moveTowards(speed) {
+  const playerNewPosition = calculateVectorCoordinates(speed, playerAngle, playerX * WALL_SIZE, playerY * WALL_SIZE);
+  playerX = playerNewPosition.x / WALL_SIZE;
+  playerY = playerNewPosition.y / WALL_SIZE;
+}
+
+function toggleMap() {
+  showMap = !showMap;
+}
+
 window.requestAnimationFrame(animate);
 
 window.addEventListener('keydown', event => {
@@ -113,12 +158,25 @@ window.addEventListener('keydown', event => {
     case 'Left':
     case 'ArrowLeft':
     case 'a':
-      rotatePlayer(-ROTATE_SPEED_ANGLE);
+      rotatePlayer(ROTATE_SPEED_ANGLE);
       break;
     case 'Right':
     case 'ArrowRight':
     case 'd':
-      rotatePlayer(ROTATE_SPEED_ANGLE);
+      rotatePlayer(-ROTATE_SPEED_ANGLE);
+      break;
+    case 'Up':
+    case 'ArrowUp':
+    case 'w':
+      moveTowards(PLAYER_STEP_LENGTH);
+      break;
+    case 'Down':
+    case 'ArrowDown':
+    case 's':
+      moveTowards(-PLAYER_STEP_LENGTH);
+      break;
+    case 'm':
+      toggleMap();
       break;
   }
 });
